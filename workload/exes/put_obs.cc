@@ -58,10 +58,10 @@ typedef struct KVPair
 
 
 int main(int argc, char* argv[]) {
-    std::string index_path = "/home/xuwenhao/LETUS_/";
+    std::string index_path = "/home/lrd/SRTP/letus-without-lsvps/";
     // LSVPS* page_store = new LSVPS(index_path);
     std::string data_path;
-    data_path = "/home/xuwenhao/LETUS_/data/";//your own path
+    data_path = "/home/lrd/SRTP/letus-without-lsvps/data/"; // your own path
     size_t key_len = atoi(argv[1]);
     VDLS* value_store = new VDLS(data_path);
     DMMTrie* trie = new DMMTrie(0,value_store);
