@@ -173,7 +173,7 @@ void Region::Commit(uint64_t version) {
         BasePage* page = GetPage(old_pagekey);  // load the page into lru cache
         if (page == nullptr) {
             // GetPage returns nullptr means that the pid is new
-            page = new (pool_.allocate()) BasePage(this, nullptr, pid, page_pool_.allocate());
+            page = new (AllocBasePage()) BasePage(this, nullptr, pid, AllocPage());
             // cnt++;
             // start = chrono::system_clock::now();
             // page = pool_.allocate();

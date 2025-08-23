@@ -43,7 +43,7 @@ class NibbleBucket {
     }
 
     BasePage* AllocPage() {
-        return pool_.allocate();
+        return SharedMemoryPools::getInstance().getBasePagePool().allocate();
     }
     void UpdateMasterNibbleBucket() {
         // std::cout << "NibbleValue: " << nibble_value_ << std::endl;
@@ -62,7 +62,7 @@ class NibbleBucket {
     list<pair<PageKey, BasePage*>> pagekeys_;  // list to maintain cache order
     std::unordered_map<std::string, DeltaPage> active_deltapages_;  // deltapage of all pages, delta pages are indexed by pid
     std::unordered_map<std::string, std::pair<uint64_t, uint64_t>> page_versions_;  // current version, latest basepage version
-    ElementPool<BasePage> pool_;
+    // ElementPool<BasePage> pool_;
     uint64_t workload_{ 0 };
     uint8_t owner_region_id_;
 };
@@ -70,10 +70,11 @@ class NibbleBucket {
 class Worker {
     public:
     Worker(bool pool_init = false) {
-        if (pool_init) {
-            pool_.reserve();
-        }
-        page_pool_.reserve();
+        // if (pool_init)
+        // {
+        //   pool_.reserve();
+        // }
+        // page_pool_.reserve();
     }
     BasePage* GetPage(const PageKey& pagekey);
     DeltaPage* GetDeltaPage(const string& pid);
@@ -85,7 +86,38 @@ class Worker {
 
     void  UpdatePageKey(const PageKey& old_pagekey, const PageKey& new_pagekey);
     void  WritePageCache(PageKey pagekey, Page* page);
-    
+
+    // Helper methods to access shared pools
+    BasePage *AllocBasePage()
+    {
+        return SharedMemoryPools::getInstance().getBasePagePool().allocate();
+    }
+
+    void DeallocBasePage(BasePage *page)
+    {
+        SharedMemoryPools::getInstance().getBasePagePool().deallocate(page);
+    }
+
+    DeltaPage *AllocDeltaPage()
+    {
+        return SharedMemoryPools::getInstance().getDeltaPagePool().allocate();
+    }
+
+    void DeallocDeltaPage(DeltaPage *page)
+    {
+        SharedMemoryPools::getInstance().getDeltaPagePool().deallocate(page);
+    }
+
+    char *AllocPage()
+    {
+        return SharedMemoryPools::getInstance().getPagePool().allocate();
+    }
+
+    void DeallocPage(char *page)
+    {
+        SharedMemoryPools::getInstance().getPagePool().deallocate(page);
+    }
+
     // NibbleBucket* GetNibbleBucket(uint8_t nibble_value) {
     //     // if (nibble_buckets_[nibble_value] == nullptr) {
     //     //     throw std::runtime_error("Nibble bucket not initialized");
@@ -118,7 +150,7 @@ class Worker {
     list<pair<PageKey, BasePage*>> pagekeys_;  // list to maintain cache order
     std::unordered_map<std::string, DeltaPage*> active_deltapages_;  // deltapage of all pages, delta pages are indexed by pid
     std::unordered_map<std::string, std::pair<uint64_t, uint64_t>> page_versions_;  // current version, latest basepage version
-    ElementPool<BasePage> pool_;
-    PagePool page_pool_;
-    ElementPool<DeltaPage> pool_delta_;
+    // ElementPool<BasePage> pool_;
+    // PagePool page_pool_;
+    // ElementPool<DeltaPage> pool_delta_;
 };
