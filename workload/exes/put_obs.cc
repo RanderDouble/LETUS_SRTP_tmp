@@ -58,10 +58,10 @@ typedef struct KVPair
 
 
 int main(int argc, char* argv[]) {
-    std::string index_path = "/home/xuwenhao/DMMTree/";
+    std::string index_path = "/home/lrd/SRTP/xwh-origin-version/";
     // LSVPS* page_store = new LSVPS(index_path);
     std::string data_path;
-    data_path = "/home/xuwenhao/DMMTree/data/";//your own path
+    data_path = "/home/lrd/SRTP/xwh-origin-version/data/"; // your own path
     // VDLS* value_store = new VDLS(data_path);
     size_t max_region_num = atoi(argv[1]);
     size_t key_len = atoi(argv[2]);
@@ -69,7 +69,7 @@ int main(int argc, char* argv[]) {
     // std::cerr << "Max Region Num: " << max_region_num << std::endl;
     // page_store->RegisterTrie(trie);
 
-    KVPair kvs[100000];
+    std::vector<KVPair> kvs(100000);
     // int key_len = 5;
     // for (int i = 0; i < 50000; i++) {
     //     char buffer[20];  // 假设数字不会超过 20 位
