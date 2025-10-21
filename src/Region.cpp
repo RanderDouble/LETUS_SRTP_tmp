@@ -335,7 +335,7 @@ void Region::Stop() {
     }
     item.first = 0;
     master_->MasterStop(thread_id_);
-    cout<<"1"<<endl;
+    // cout<<"1"<<endl;
     //region_thread_.join();
     // PrintLog("Stopped | "+ GetCurrentTimeStamp(3));
 #ifdef REGION_LOG
