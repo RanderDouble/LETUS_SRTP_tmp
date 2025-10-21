@@ -71,14 +71,16 @@ void Worker::PutPage(const PageKey &pagekey,
   if (lru_cache_.size() >= max_cache_size_) {  // cache is full
     PageKey last_key = pagekeys_.back().first;
     auto last_iter = lru_cache_.find(last_key);
-    delete last_iter->second->second;  // release memory of basepage
+    // 使用池释放机制而不是 delete
+    DeletePoolPage(last_iter->second->second);
     // remove the page whose pagekey is at the tail of list
     lru_cache_.erase(last_key);
     pagekeys_.pop_back();
   }
   auto it = lru_cache_.find(pagekey);
   if (it != lru_cache_.end()) {
-    delete it->second->second;
+    // 使用池释放机制而不是 delete
+    DeletePoolPage(it->second->second);
     pagekeys_.erase(it->second);
     lru_cache_.erase(it);
   }
@@ -97,5 +99,41 @@ void  Worker::UpdatePageKey(const PageKey& old_pagekey, const PageKey& new_pagek
         lru_cache_.erase(it);
         pagekeys_.push_front(std::make_pair(new_pagekey, basepage)); //更新lru cache
         lru_cache_[new_pagekey] = pagekeys_.begin();
+    }
+}
+
+// 统一的页面释放函数
+void Worker::DeletePoolPage(Page* page) {
+    if (!page)
+        return;
+
+    // 先保存 data_ 指针和标志
+    char* data = page->GetData();
+    bool uses_pool = page->UsesPagePool();
+
+    // 根据页面类型选择对应的池
+    if (page->GetPageKey().type) {
+        // DeltaPage (type == true)
+        DeltaPage* delta_page = dynamic_cast<DeltaPage*>(page);
+        if (delta_page) {
+            // 调用析构函数（不会释放 PagePool 分配的 data_）
+            delta_page->~DeltaPage();
+            // 释放对象到池
+            pool_delta_.deallocate(delta_page);
+        }
+    } else {
+        // BasePage (type == false)
+        BasePage* base_page = dynamic_cast<BasePage*>(page);
+        if (base_page) {
+            // 调用析构函数（不会释放 PagePool 分配的 data_）
+            base_page->~BasePage();
+            // 释放对象到池
+            pool_.deallocate(base_page);
+        }
+    }
+
+    // 如果 data_ 来自 PagePool，需要手动释放
+    if (uses_pool && data) {
+        page_pool_.deallocate(data);
     }
 }

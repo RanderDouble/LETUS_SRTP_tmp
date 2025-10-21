@@ -622,6 +622,14 @@ DeltaPage::DeltaPage(const DeltaPage &other) : Page(other) {
   deltaitems_ = other.deltaitems_;
 }
 
+DeltaPage::DeltaPage(const DeltaPage &other, char *page_data) : Page(other, page_data) {
+    // Copy DeltaPage specific members
+    last_pagekey_ = other.last_pagekey_;
+    update_count_ = other.update_count_;
+    b_update_count_ = other.b_update_count_;
+    deltaitems_ = other.deltaitems_;
+}
+
  DeltaPage::DeltaPage(char *buffer) : b_update_count_(0) {
    Page({0, 0, true, ""});  // 临时初始化，后面会更新
 
@@ -721,8 +729,12 @@ uint16_t DeltaPage::GetBasePageUpdateCount() { return b_update_count_; }
 
 void DeltaPage::ClearBasePageUpdateCount() { b_update_count_ = 0; }
 
-BasePage::BasePage(Worker* worker, Node *root, const string &pid)
-  : worker_(worker), root_(root), Page({ 0, 0, false, pid }) {
+BasePage::BasePage(Worker *worker, Node *root, const string &pid) 
+    : worker_(worker), root_(root), Page({0, 0, false, pid}) {
+}
+
+BasePage::BasePage(Worker* worker, Node *root, const string &pid, char *page_data)
+  : worker_(worker), root_(root), Page(page_data, { 0, 0, false, pid }) {
 }
 
 BasePage::BasePage(const BasePage &other) : Page(other), worker_(other.worker_) {
@@ -736,6 +748,19 @@ BasePage::BasePage(const BasePage &other) : Page(other), worker_(other.worker_) 
   } else {
     root_ = nullptr;
   }
+}
+
+BasePage::BasePage(const BasePage &other, char *page_data) : Page(other, page_data), worker_(other.worker_) {
+    // Deep copy the root node
+    if (other.root_) {
+        if (other.root_->IsLeaf()) {
+            root_ = new LeafNode(*dynamic_cast<LeafNode *>(other.root_));
+        } else {
+            root_ = new IndexNode(*dynamic_cast<IndexNode *>(other.root_));
+        }
+    } else {
+        root_ = nullptr;
+    }
 }
 
 //buffer存储具体格式化内容

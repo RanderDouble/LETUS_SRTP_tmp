@@ -184,6 +184,7 @@ class DeltaPage : public Page {
    DeltaPage(char *buffer);
   //DeltaPage(char* page_data, const string& pid);
   DeltaPage(const DeltaPage& other);
+  DeltaPage(const DeltaPage &other, char *page_data);
   void AddIndexNodeUpdate(uint8_t location, uint64_t version,
                           const string &hash, uint8_t index,
                           const string &child_hash);
@@ -210,15 +211,12 @@ class DeltaPage : public Page {
 
 class BasePage : public Page {
  public:
-  BasePage(Worker* worker_ = nullptr, Node *root = nullptr,
-      const string &pid = "");
+  BasePage(Worker* worker_ = nullptr, Node *root = nullptr, const string &pid = "");
+  BasePage(Worker *worker, Node *root, const string &pid, char *page_data);
   BasePage(Worker* worker_, char* buffer);
   BasePage(Worker* worker_, string key, string pid, string nibbles);
   BasePage(const BasePage& other);  // deep copy
-
-  BasePage(Worker* worker, Node *root,
-    const string& pid, char* page_data): worker_(worker),root_(root), Page(page_data, {0, 0, false, pid}) {
-  }
+  BasePage(const BasePage &other, char *page_data); // deep copy with memory space
   ~BasePage();
   void SerializeTo();
   void UpdatePage(uint64_t version,

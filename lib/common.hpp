@@ -125,6 +125,7 @@ class Page {  //设置成抽象类 序列化 反序列化 getPageKey setPageKey 
 alignas(4096) char* data_ = nullptr;
  PageKey pagekey_;
  bool owns_data_ = false;
+ bool use_page_pool_ = false; // for debug
 
  static char* allocate_aligned() {
   return static_cast<char*>(std::aligned_alloc(4096, PAGE_SIZE));
@@ -150,7 +151,7 @@ Page(char* external_data, PageKey pagekey) : data_(external_data), owns_data_(fa
 
 // 析构：仅释放拥有的数据
 ~Page() {
-    if (owns_data_) {
+    if (owns_data_ && !use_page_pool_) {
         free_aligned(data_);
     }
 }
@@ -161,6 +162,12 @@ Page(const Page& other) : owns_data_(true), pagekey_(other.pagekey_) {
       std::memcpy(data_, other.data_, PAGE_SIZE);
 
 }
+
+// 使用预分配内存的拷贝构造函数
+Page(const Page& other, char* page_data) : data_(page_data), owns_data_(true), use_page_pool_(true), pagekey_(other.pagekey_) {
+    std::memcpy(data_, other.data_, PAGE_SIZE);
+}
+
 // 拷贝赋值
 Page& operator=(const Page& other) {
   if (this != &other) {
@@ -247,6 +254,8 @@ Page& operator=(Page&& other) noexcept {
   const char* GetData() const { return data_; }
 
   char* GetData() { return data_; }
+
+  bool UsesPagePool() const { return use_page_pool_; }
 };
 inline std::ostream &operator<<(std::ostream &os, const PageKey &key) {
   os << "PageKey(version=" << key.version << ", tid=" << key.tid << ", type=" << key.type

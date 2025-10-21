@@ -295,7 +295,8 @@ BasePage *LSVPS::LoadPage(const PageKey &pagekey) {
     }
   }
   if (current_pagekey.version == 0)
-    basepage = new BasePage(worker_, nullptr, pagekey.pid);
+    basepage = new (worker_->GetBasePagePool().allocate()) BasePage(worker_, nullptr, pagekey.pid, worker_->GetPagePool().allocate());
+    // basepage = new BasePage(worker_, nullptr, pagekey.pid);
   else {
     // WARNING: 这个page有可能被flush所释放掉。
     basepage = dynamic_cast<BasePage *>(pageLookup(current_pagekey));
@@ -305,7 +306,8 @@ BasePage *LSVPS::LoadPage(const PageKey &pagekey) {
                 << std::endl;
       throw std::runtime_error("BasePage not found for the given PageKey");
     }
-    basepage = new BasePage(*basepage);  // deep copy
+    basepage = new (worker_->GetBasePagePool().allocate()) BasePage(*basepage, worker_->GetPagePool().allocate());
+    // basepage = new BasePage(*basepage);  // deep copy
   }
   while (!delta_pages.empty()) {
     applyDelta(basepage, delta_pages.top(), pagekey);
@@ -323,12 +325,18 @@ BasePage *LSVPS::LoadPage(const PageKey &pagekey) {
 }
 
 void LSVPS::StorePage(Page *page) {
-  // Create a deep copy of the page
+  // Create a deep copy of the page using pool allocation
   Page *page_copy;
   if (page->GetPageKey().type) {
-    page_copy = new DeltaPage(*dynamic_cast<DeltaPage *>(page));
+    // 为 DeltaPage 使用池分配
+    DeltaPage* src = dynamic_cast<DeltaPage *>(page);
+    // page_copy = new (worker_->GetDeltaPagePool().allocate()) DeltaPage(*src);
+    page_copy = new DeltaPage(*src, worker_->GetPagePool().allocate());
   } else {
-    page_copy = new BasePage(*dynamic_cast<BasePage *>(page));
+    // 为 BasePage 使用池分配
+    BasePage* src = dynamic_cast<BasePage *>(page);
+    // page_copy = new (worker_->GetBasePagePool().allocate()) BasePage(*src);
+    page_copy = new BasePage(*src, worker_->GetPagePool().allocate());
   }
 
   table_.Store(page_copy);
@@ -470,10 +478,12 @@ Page *LSVPS::readPageFromIndexFile(
   Page *page = nullptr;
   try {
     if (!pagekey.type) {
-      page = new BasePage(worker_, data);
+    //   page = new BasePage(worker_, data);
+      page = new (worker_->GetBasePagePool().allocate()) BasePage(worker_, data);
     } else {
       //page = new DeltaPage(data,pagekey.pid);
-      page = new DeltaPage(data);
+    //   page = new DeltaPage(data);
+      page = new (worker_->GetDeltaPagePool().allocate()) DeltaPage(data);
     }
   } catch (const std::exception &e) {
     throw std::runtime_error(std::string("Failed to create page: ") + e.what());
@@ -553,8 +563,9 @@ void LSVPS::MemIndexTable::Flush() {
   parent_LSVPS_.AddIndexFile(
       {buffer_.front()->GetPageKey(), buffer_.back()->GetPageKey(), filepath});
 
+  // 使用池释放内存
   for (auto page : buffer_) {
-    delete page;
+      parent_LSVPS_.worker_->DeletePoolPage(page);
   }
   buffer_.clear();
 }
