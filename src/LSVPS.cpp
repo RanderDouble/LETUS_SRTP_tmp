@@ -632,6 +632,12 @@ LSVPS::ActiveDeltaPageCache::ActiveDeltaPageCache(size_t max_size,
     out.close();
   }
 
+  // 打开持久化的文件流，避免重复打开
+  cache_stream_.open(cache_file_, std::ios::binary | std::ios::in | std::ios::out);
+  if (!cache_stream_) {
+    throw std::runtime_error("Failed to open cache file: " + cache_file_);
+  }
+
   // prepare the page pool
   page_pool_ = new DeltaPage[max_size_];
   for (size_t i = 0; i < max_size_; ++i) {
@@ -644,6 +650,11 @@ LSVPS::ActiveDeltaPageCache::~ActiveDeltaPageCache() {
   std::cout << cache_.size() << std::endl;
 #endif
   FlushToDisk();
+  
+  // 关闭持久化的文件流
+  if (cache_stream_.is_open()) {
+    cache_stream_.close();
+  }
 }
 
 void LSVPS::ActiveDeltaPageCache::Store(DeltaPage *page) {
@@ -703,23 +714,24 @@ void LSVPS::ActiveDeltaPageCache::prepareForBatchWrite(const string &pid,
 
 void LSVPS::ActiveDeltaPageCache::writePageToDisk(const string &pid,
                                                   DeltaPage *page) {
-  // 打开文件并写入
-  std::fstream out(cache_file_,
-                   std::ios::binary | std::ios::out | std::ios::in);
-  if (!out) {
-    throw std::runtime_error("Failed to open file for writing: " + cache_file_);
+  // 使用持久化的文件流，避免重复打开
+  if (!cache_stream_.is_open()) {
+    throw std::runtime_error("Cache file stream is not open");
   }
 
   try {
+    // 清除可能的错误标志（读写切换时需要）
+    cache_stream_.clear();
+    
     // 记录当前写入位置
     size_t offset;
     auto it = pid_to_offset_.find(pid);
     if (it != pid_to_offset_.end()) {
       offset = it->second;
-      out.seekp(offset, ios::beg);
+      cache_stream_.seekp(offset, std::ios::beg);
     } else {
-      out.seekp(0, ios::end);
-      offset = out.tellp();
+      cache_stream_.seekp(0, std::ios::end);
+      offset = cache_stream_.tellp();
       pid_to_offset_.insert(std::make_pair(pid, offset));
     }
 
@@ -728,18 +740,14 @@ void LSVPS::ActiveDeltaPageCache::writePageToDisk(const string &pid,
       throw std::runtime_error("Invalid page data encountered");
     }
     page->SerializeTo();  // TODO: no serialize before write
-    out.write(reinterpret_cast<const char *>(page->GetData()), PAGE_SIZE);
-    if (!out.good()) {
+    cache_stream_.write(reinterpret_cast<const char *>(page->GetData()), PAGE_SIZE);
+    if (!cache_stream_.good()) {
       throw std::runtime_error("Failed to write page data");
     }
 
-    out.flush();
-    out.close();
-
-    // 更新pid到offset的映射
-    // pid_to_offset_[pid] = offset;
+    // 立即刷新，确保数据写入磁盘
+    cache_stream_.flush();
   } catch (const std::exception &e) {
-    out.close();
     throw;
   }
 }
@@ -874,24 +882,25 @@ void LSVPS::ActiveDeltaPageCache::FlushToDisk() {
     prepareForBatchWrite(pid, &page_pool_[pool_pos]);
   }
 
-  // 打开文件
-  std::fstream out(cache_file_,
-                   std::ios::binary | std::ios::out | std::ios::in);
-  if (!out) {
-    throw std::runtime_error("Failed to open file for writing: " + cache_file_);
+  // 使用持久化的文件流
+  if (!cache_stream_.is_open()) {
+    throw std::runtime_error("Cache file stream is not open");
   }
 
   try {
+    // 清除可能的错误标志
+    cache_stream_.clear();
+    
     // 将所有缓存中的页面写入磁盘
     for (const auto &[pid, pool_pos] : cache_) {
       size_t offset;
       auto offset_it = pid_to_offset_.find(pid);
       if (offset_it != pid_to_offset_.end()) {
         offset = offset_it->second;
-        out.seekp(offset, ios::beg);
+        cache_stream_.seekp(offset, std::ios::beg);
       } else {
-        out.seekp(0, ios::end);
-        offset = out.tellp();
+        cache_stream_.seekp(0, std::ios::end);
+        offset = cache_stream_.tellp();
         pid_to_offset_.insert(std::make_pair(pid, offset));
       }
 
@@ -899,22 +908,33 @@ void LSVPS::ActiveDeltaPageCache::FlushToDisk() {
         throw std::runtime_error("Invalid page data encountered");
       }
       page_pool_[pool_pos].SerializeTo();
-      out.write(reinterpret_cast<const char *>(page_pool_[pool_pos].GetData()),
+      cache_stream_.write(reinterpret_cast<const char *>(page_pool_[pool_pos].GetData()),
                 PAGE_SIZE);
-      if (!out.good()) {
+      if (!cache_stream_.good()) {
         throw std::runtime_error("Failed to write page data");
       }
 
       pid_to_offset_[pid] = offset;
     }
 
-    out.flush();
-    out.close();
-
+    cache_stream_.flush();
+    
+    // 临时关闭流，让 writeIndexBlock 使用自己的流
+    cache_stream_.close();
+    
     // 写入最终的索引块
     writeIndexBlock();
+    
+    // 重新打开持久化的文件流
+    cache_stream_.open(cache_file_, std::ios::binary | std::ios::in | std::ios::out);
+    if (!cache_stream_) {
+      throw std::runtime_error("Failed to reopen cache file: " + cache_file_);
+    }
   } catch (const std::exception &e) {
-    out.close();
+    // 确保流处于正确状态
+    if (!cache_stream_.is_open()) {
+      cache_stream_.open(cache_file_, std::ios::binary | std::ios::in | std::ios::out);
+    }
     throw;
   }
 }
@@ -941,30 +961,28 @@ bool LSVPS::ActiveDeltaPageCache::readFromDisk(const string &pid,
     return false;  // 页面不在磁盘上
   }
 
-  // 打开文件
-  std::ifstream in(cache_file_, std::ios::binary);
-  if (!in) {
-    throw std::runtime_error("Failed to open file for reading: " + cache_file_);
+  // 使用持久化的文件流
+  if (!cache_stream_.is_open()) {
+    throw std::runtime_error("Cache file stream is not open");
   }
 
   try {
+    // 清除错误标志，确保可以进行读操作
+    cache_stream_.clear();
+    
     // 定位到页面数据
-    in.seekg(offset_it->second);
-    if (!in.good()) {
+    cache_stream_.seekg(offset_it->second, std::ios::beg);
+    if (!cache_stream_.good()) {
       throw std::runtime_error("Failed to seek to page data");
     }
 
     // 读取页面数据
     char *data = new char[PAGE_SIZE];
-    in.read(data, PAGE_SIZE);
-    if (!in.good()) {
+    cache_stream_.read(data, PAGE_SIZE);
+    if (!cache_stream_.good()) {
       delete[] data;
-      in.close();
       throw std::runtime_error("Failed to read page data");
     }
-    // TODO: close file, otherwise it will conflict with file writing in
-    // evictIfNeeded
-    in.close();
 
     // 创建DeltaPage对象
     // DeltaPage *page = new DeltaPage(data);
@@ -980,7 +998,11 @@ bool LSVPS::ActiveDeltaPageCache::readFromDisk(const string &pid,
 
     return state;
   } catch (const std::exception &e) {
-    in.close();
+    // readFromDisk uses cache_stream_. There is no local ifstream 'in' here.
+    // Ensure cache_stream_ error flags are cleared for future operations.
+    if (cache_stream_.is_open()) {
+      cache_stream_.clear();
+    }
     throw;
   }
 }

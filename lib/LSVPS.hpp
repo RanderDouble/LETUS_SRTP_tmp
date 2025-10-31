@@ -121,6 +121,7 @@ class LSVPS {
     std::string cache_dir_;                        // 磁盘缓存目录
     std::string cache_file_;                       // 统一存储文件路径
     std::list<string> lru_queue_;                  // 用于LRU淘汰策略
+    std::fstream cache_stream_;                    // 持久化的文件流，避免重复打开
   };
 
   Page *pageLookup(const PageKey &pagekey);

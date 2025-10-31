@@ -56,7 +56,10 @@ class Worker {
     ElementPool<BasePage>& GetBasePagePool() { return pool_; }
     ElementPool<DeltaPage>& GetDeltaPagePool() { return pool_delta_; }
     PagePool& GetPagePool() { return page_pool_; }
+    ElementPool<IndexNode>& GetIndexNodePool() { return pool_index_node_; }
+    ElementPool<LeafNode>& GetLeafNodePool() { return pool_leaf_node_; }
     void DeletePoolPage(Page* page);
+    void DeletePoolNode(Node* node);
 
 protected:
     LSVPS* page_store_;
@@ -68,6 +71,8 @@ protected:
     ElementPool<BasePage> pool_;
     PagePool page_pool_;
     ElementPool<DeltaPage> pool_delta_;
+    ElementPool<IndexNode> pool_index_node_;
+    ElementPool<LeafNode> pool_leaf_node_;
     std::unordered_map<string, vector<uint64_t>>deltapage_versions_;
     uint64_t current_version_ = 1;
     const size_t max_cache_size_ = 300000;

@@ -137,3 +137,21 @@ void Worker::DeletePoolPage(Page* page) {
         page_pool_.deallocate(data);
     }
 }
+
+void Worker::DeletePoolNode(Node* node) {
+    if (!node)
+        return;
+    if (node->UsesNodePool() == false) {
+        delete node;  // 非池分配，直接删除
+        return;
+    }
+    if (node->IsLeaf()) {
+        LeafNode* ln = static_cast<LeafNode*>(node);
+        ln->~LeafNode();
+        pool_leaf_node_.deallocate(ln);
+    } else {
+        IndexNode* in = static_cast<IndexNode*>(node);
+        in->~IndexNode();
+        pool_index_node_.deallocate(in);
+    }
+}

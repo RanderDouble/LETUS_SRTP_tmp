@@ -83,6 +83,11 @@ class Node {
   virtual bool IsLeaf() const = 0;
 
   virtual NodeProof GetNodeProof(int level, int index);
+  void setUseNodePool(bool use_pool);
+  bool UsesNodePool() const;
+
+  protected:
+  bool use_node_pool_ = false;
 };
 
 class LeafNode : public Node {
@@ -193,7 +198,7 @@ class DeltaPage : public Page {
   void SerializeTo();
   bool Deserialize(char *buffer);
   void ClearDeltaPage();
-  const vector<DeltaItem> &GetDeltaItems() const;
+  const deque<DeltaItem> &GetDeltaItems() const;
   PageKey GetLastPageKey() const;
   void SetLastPageKey(PageKey pagekey);
   uint16_t GetDeltaPageUpdateCount();
@@ -203,7 +208,7 @@ class DeltaPage : public Page {
   bool Deserialize(std::ifstream &in);
   private:
   // std::mutex mtx;
-  vector<DeltaItem> deltaitems_;
+  deque<DeltaItem> deltaitems_;
   PageKey last_pagekey_;
   uint16_t update_count_;
   uint16_t b_update_count_;

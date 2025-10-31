@@ -58,6 +58,12 @@ uint64_t Node::GetChildVersion(int index) {}
 void Node::UpdateNode() {}
 void Node::SetLocation(tuple<uint64_t, uint64_t, uint64_t> location) {}
 NodeProof Node::GetNodeProof(int level, int index) {}
+void Node::setUseNodePool(bool use_pool) {
+  use_node_pool_ = use_pool;
+}
+bool Node::UsesNodePool() const {
+  return use_node_pool_;
+}
 
 LeafNode::LeafNode(uint64_t V, const string &k,
                    const tuple<uint64_t, uint64_t, uint64_t> &l,
@@ -715,7 +721,7 @@ void DeltaPage::ClearDeltaPage() {
   update_count_ = 0;
 }
 
-const vector<DeltaPage::DeltaItem>& DeltaPage::GetDeltaItems() const {
+const deque<DeltaPage::DeltaItem>& DeltaPage::GetDeltaItems() const {
   return deltaitems_;
 }
 
@@ -828,10 +834,12 @@ BasePage::BasePage(Worker* worker, string key, string pid, string nibbles)
 BasePage::~BasePage() {
   for (int i = 0; i < DMM_NODE_FANOUT; i++) {
     if (root_->HasChild(i)) {
-      delete root_->GetChild(i);
+      worker_->DeletePoolNode(root_->GetChild(i));
+    //   delete root_->GetChild(i);
     }
   }
-  delete root_;
+  worker_->DeletePoolNode(root_);
+//   delete root_;
 }
 
 /* serialized BasePage format (size in bytes):
@@ -873,7 +881,8 @@ void BasePage::UpdatePage(uint64_t version,
   if (nibbles.size() == 0) {
     // page has one leafnode, eg. page "abcdef" for key "abcdef"
     if (!root_) {
-      root_ = new LeafNode(0, pagekey.pid, {}, "");
+      root_ = new (worker_->GetLeafNodePool().allocate()) LeafNode(0, pagekey.pid, {}, "");
+      root_->setUseNodePool(true);
     }
     static_cast<LeafNode *>(root_)->UpdateNode(version, location, value, 0,
                                                deltapage);
@@ -881,12 +890,14 @@ void BasePage::UpdatePage(uint64_t version,
     // page has one indexnode and one level of leafnodes, eg. page "abcd" for
     // key "abcde"
     if (!root_) {
-      root_ = new IndexNode(0, "", 0);
+      root_ = new (worker_->GetIndexNodePool().allocate()) IndexNode(0, "", 0);
+      root_->setUseNodePool(true);
     }
     int index = GetIndex(nibbles[0]);
     if (!root_->HasChild(index)) {
       Node *child_node =
-          new LeafNode(0, pagekey.pid + to_string(index), {}, "");
+          new (worker_->GetLeafNodePool().allocate()) LeafNode(0, pagekey.pid + to_string(index), {}, "");
+      child_node->setUseNodePool(true);
       root_->AddChild(index, child_node, 0, "");
     }
     static_cast<LeafNode *>(root_->GetChild(index))
@@ -898,11 +909,13 @@ void BasePage::UpdatePage(uint64_t version,
   } else {
     // page has two levels of indexnodes , eg. page "ab" for key "abcdef"
     if (!root_) {
-      root_ = new IndexNode(0, "", 0);
+      root_ = new (worker_->GetIndexNodePool().allocate()) IndexNode(0, "", 0);
+      root_->setUseNodePool(true);
     }
     int index = GetIndex(nibbles[0]), child_index = GetIndex(nibbles[1]);
     if (!root_->HasChild(index)) {
-      Node *child_node = new IndexNode(0, "", 1 << child_index);
+      Node *child_node = new (worker_->GetIndexNodePool().allocate()) IndexNode(0, "", 1 << child_index);
+      child_node->setUseNodePool(true);
       root_->AddChild(index, child_node, 0, "");
     }
     static_cast<IndexNode *>(root_->GetChild(index))
