@@ -1,5 +1,6 @@
 #include "Region.hpp"
 #include "Master.hpp"
+#include <array>
 
 std::tuple<uint64_t, std::string, std::string> TaskQueue::empty_task_ = std::make_tuple(0, "", "");
 
@@ -269,13 +270,33 @@ void Region::Commit(uint64_t version) { // commit版本version
   // auto duration = chrono::duration_cast<chrono::microseconds>(end - start);
   // PrintLog("Time taken to update page: " + to_string(duration.count()) + "
   // microseconds"); start = chrono::system_clock::now();
+  // Precompute hash for each 2-nibble pid to avoid repeated GetPage calls
+  std::array<string, 256> pid2_hash;
+  std::array<bool, 256> pid2_present{};
+  pid2_present.fill(false);
+  for (const auto &entry : updates) {
+    const string &upd_pid = entry.first;
+    if (upd_pid.size() == 2) {
+      uint8_t idx = GetNibbleValue(upd_pid);
+      if (!pid2_present[idx]) {
+        BasePage *base = GetPage({version, 0, false, upd_pid});
+        pid2_hash[idx] = base->GetRoot()->GetHash();
+        pid2_present[idx] = true;
+      }
+    }
+  }
+
   for (const auto &it : put_cache_) {
     std::string nibbles = it.first.substr(0, 2);
     tuple<uint64_t, uint64_t, uint64_t> location;
     string value, child_hash;
     // if (nibbles.size() == 2) {  // indexnode + indexnode
-    BasePage *base = GetPage({version, 0, false, nibbles});
-    child_hash = base->GetRoot()->GetHash();
+    uint8_t idx = GetNibbleValue(nibbles);
+    if (pid2_present[idx]) {
+      child_hash = pid2_hash[idx];
+    } else {
+      child_hash = GetPage({version, 0, false, nibbles})->GetRoot()->GetHash();
+    }
     //}
     // else {  // (indexnode + leafnode) or leafnode
     //    value = put_cache_[nibbles];
